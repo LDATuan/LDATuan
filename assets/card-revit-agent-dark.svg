@@ -16,7 +16,7 @@
 @keyframes w3-hl{0%,32%{stroke-dashoffset:494}52%,92%{stroke-dashoffset:0;opacity:1}98%,100%{opacity:0}}
 .w3-dot{animation:w3-dot 1.4s ease-in-out infinite}
 @keyframes w3-dot{50%{opacity:.25}}
-</style><rect width="440" height="344" fill="#101014"/><text class="fm" x="20" y="21.5" font-size="9" fill="rgba(242,241,238,.42)" text-anchor="start" >AI AGENT · IN PROGRESS</text><text class="fm" x="420" y="21.5" font-size="9" fill="rgba(242,241,238,.42)" text-anchor="end" >04</text><svg x="0" y="34" width="440" height="190" viewBox="0 0 440 190" overflow="hidden">
+</style><clipPath id="root-clip"><rect x="0" y="0" width="440" height="344"/></clipPath><g clip-path="url(#root-clip)"><rect width="440" height="344" fill="#101014"/><text class="fm" x="20" y="21.5" font-size="9" fill="rgba(242,241,238,.42)" text-anchor="start" >AI AGENT · IN PROGRESS</text><text class="fm" x="420" y="21.5" font-size="9" fill="rgba(242,241,238,.42)" text-anchor="end" >04</text><svg x="0" y="34" width="440" height="190" viewBox="0 0 440 190" overflow="hidden">
 <rect width="440" height="190" fill="#1c1c23"/>
 <g class="w3-u"><rect x="54" y="24" width="160" height="30" rx="12" fill="#2d81ff"/>
 <text class="fb" x="68" y="43" font-size="10" fill="#fff">Walls with no fire rating?</text></g>
@@ -32,4 +32,4 @@
 <path d="M236 96 H330 V168 M330 96 V60 H420 M380 96 V168 M290 24 V60"/></g>
 <path class="w3-hl" d="M236 24 H420 M420 24 V168 M330 96 V168 M236 96 H330" fill="none" stroke="#2d81ff" stroke-width="2.4"/>
 <circle class="w3-dot" cx="240" cy="180" r="2.5" fill="#2d81ff"/>
-<text class="fm" x="248" y="182.5" font-size="6.5" fill="#71717a" text-anchor="start" >LIVE · LEVEL 2</text></svg><path d="M0 34.5 H440 M0 224.5 H440 M0 343.5 H440" stroke="rgba(242,241,238,.14)"/><text class="fh" x="24" y="262" font-size="21" fill="#ffffff" letter-spacing="-.6">Revit agent</text><text class="fb" x="24" y="290" font-size="13.5" fill="rgba(242,241,238,.64)">Operate the model by asking for things instead of</text><text class="fb" x="24" y="309" font-size="13.5" fill="rgba(242,241,238,.64)">clicking through dialogs.</text></svg>
+<text class="fm" x="248" y="182.5" font-size="6.5" fill="#71717a" text-anchor="start" >LIVE · LEVEL 2</text></svg><path d="M0 34.5 H440 M0 224.5 H440 M0 343.5 H440" stroke="rgba(242,241,238,.14)"/><text class="fh" x="24" y="262" font-size="21" fill="#ffffff" letter-spacing="-.6">Revit agent</text><text class="fb" x="24" y="290" font-size="13.5" fill="rgba(242,241,238,.64)">Operate the model by asking for things instead of</text><text class="fb" x="24" y="309" font-size="13.5" fill="rgba(242,241,238,.64)">clicking through dialogs.</text></g></svg>

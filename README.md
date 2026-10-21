@@ -14,14 +14,3 @@
 <a href="https://ldatuan.com"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/cta-left-dark.svg"><img src="./assets/cta-left-light.svg" width="35.4545%" align="top" alt=" "></picture></a><a href="https://ldatuan.com"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/cta-blog-dark.svg"><img src="./assets/cta-blog-light.svg" width="14.5454%" align="top" alt="Visit the blog"></picture></a><a href="https://www.linkedin.com/in/tuanle-97/"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/cta-linkedin-dark.svg"><img src="./assets/cta-linkedin-light.svg" width="14.5454%" align="top" alt="LinkedIn"></picture></a><a href="https://www.linkedin.com/in/tuanle-97/"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/cta-right-dark.svg"><img src="./assets/cta-right-light.svg" width="35.4545%" align="top" alt=" "></picture></a>
 <a href="https://ldatuan.com"><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/cta-bottom-dark.svg"><img src="./assets/cta-bottom-light.svg" width="100%" align="top" alt="Footer: stack, work, writing and links."></picture></a>
 </p>
-
-<details>
-<summary>How this page is made</summary>
-
-<br>
-
-Every image here is an SVG drawn by [`scripts/render.py`](scripts/render.py). There is no JavaScript and no image service: motion is CSS keyframes, and the fonts (Archivo, Instrument Serif, Geist Mono and Inter, all under the SIL Open Font License) are subset to the characters each image uses and embedded. Each image has a light and a dark version, picked by your GitHub theme, and everything rests on its final frame when reduced motion is on.
-
-The activity city is redrawn every night by a [GitHub Action](.github/workflows/refresh-profile.yml) that reads the public contribution calendar and commits the result.
-
-</details>

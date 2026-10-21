@@ -52,9 +52,12 @@ def P(s, p):
 
 def svg(w, h, body, css="", label="", viewbox=None):
     vb = viewbox or f"0 0 {w} {h}"
+    x, y, vw, vh = vb.split()
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" role="img" aria-label="{esc(label)}">'
-        f"<title>{esc(label)}</title><style>{BASE_CSS}{css}</style>{body}</svg>"
+        f"<title>{esc(label)}</title><style>{BASE_CSS}{css}</style>"
+        f'<clipPath id="root-clip"><rect x="{x}" y="{y}" width="{vw}" height="{vh}"/></clipPath>'
+        f'<g clip-path="url(#root-clip)">{body}</g></svg>'
     )
 
 
@@ -66,12 +69,25 @@ def mono(x, y, s, size=9.5, fill=None, anchor="start", cls="fm", extra=""):
     )
 
 
-def mark(x, y, s=1.0, fill=None):
-    """I-beam cross-section, used as the monogram."""
-    return (
-        f'<path transform="translate({x},{y}) scale({s})" fill="{fill or T["ink"]}" '
-        'd="M0 0 H22 V5 H14 V15 H22 V20 H0 V15 H8 V5 H0 Z"/>'
-    )
+# The "T" monogram from ldatuan.com, drawn in a 104 x 132 box starting at (44, 30).
+T_MARK = (
+    "M94.31,35.49v121a1.08,1.08,0,0,1-.9,1.18H66.52a1.07,1.07,0,0,1-.9-1.18v-3.88a1.07,1.07,0,0,1,.9-1.18H76.3a1.07,1.07,0,0,0,.9-1.18V41.07c0-.76-.54-1.330-1.11-1.15A30.22,30.22,0,0,0,62,49.62C53.63,59.55,52,72.32,51.62,77a1,1,0,0,1-.9,1.06H49.43a1.08,1.08,0,0,1-.9-1.18V35.49a1.08,1.08,0,0,1,.9-1.18h44A1.08,1.08,0,0,1,94.31,35.49Z",
+    "M97.69,35.49v121a1.08,1.08,0,0,0,.9,1.18h26.89a1.07,1.07,0,0,0,.9-1.18v-3.88a1.07,1.07,0,0,0-.9-1.18H115.7a1.07,1.07,0,0,1-.9-1.18V41.07c0-.76.54-1.33,1.11-1.15A30.22,30.22,0,0,1,130,49.62c8.34,9.93,10,22.7,10.35,27.42a1,1,0,0,0,.9,1.06h1.29a1.08,1.08,0,0,0,.9-1.18V35.49a1.08,1.08,0,0,0-.9-1.18h-44A1.08,1.08,0,0,0,97.69,35.49Z",
+)
+MOON = "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"  # 24 x 24, stroked
+
+
+def mark(x, y, h=22.0, fill=None):
+    """The T monogram, h pixels tall, top-left corner at (x, y)."""
+    k = h / 132
+    d = "".join(f'<path d="{p}"/>' for p in T_MARK)
+    return f'<g transform="translate({x},{y}) scale({k:.5f}) translate(-44,-30)" fill="{fill or T["ink"]}">{d}</g>'
+
+
+def moon(cx, cy, size=15.0, stroke=None):
+    k = size / 24
+    return (f'<path transform="translate({cx - size / 2},{cy - size / 2}) scale({k:.4f})" d="{MOON}" fill="none" '
+            f'stroke="{stroke or T["ink"]}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>')
 
 
 def stack(blocks):
@@ -85,75 +101,233 @@ def stack(blocks):
 
 
 # ------------------------------------------------------------------ hero
+def _iso_box(fx, fy, a, b, h, top, left, right, edge="#dbeeff"):
+    """Isometric box standing on ground corner (fx, fy): a along the right axis, b along the left."""
+    ux, uy = (0.866, -0.5), (-0.866, -0.5)
+    F = (fx, fy)
+    Rr = (fx + a * ux[0], fy + a * ux[1])
+    L = (fx + b * uy[0], fy + b * uy[1])
+    B = (Rr[0] + b * uy[0], Rr[1] + b * uy[1])
+    up = lambda p: (p[0], p[1] - h)
+    pts = lambda *ps: " ".join(f"{x:.1f},{y:.1f}" for x, y in ps)
+    out = (
+        f'<polygon points="{pts(F, L, up(L), up(F))}" fill="{left}"/>'
+        f'<polygon points="{pts(F, Rr, up(Rr), up(F))}" fill="{right}"/>'
+        f'<polygon points="{pts(up(F), up(Rr), up(B), up(L))}" fill="{top}"/>'
+        f'<path d="M{L[0]:.1f} {L[1]-h:.1f} L{fx:.1f} {fy-h:.1f} L{Rr[0]:.1f} {Rr[1]-h:.1f} M{fx:.1f} {fy:.1f} V{fy-h:.1f}" '
+        f'fill="none" stroke="{edge}" stroke-opacity=".5" stroke-width=".5"/>'
+    )
+    return out, F, Rr, L
+
+
+def _cloud(x0, y0, x1, y1, step=4.6, r=2.5):
+    """Revision cloud: scalloped rectangle, clockwise so the bumps face out."""
+    pts = []
+    for (ax, ay, bx, by) in [(x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)]:
+        n = max(1, round(((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5 / step))
+        for i in range(1, n + 1):
+            pts.append((ax + (bx - ax) * i / n, ay + (by - ay) * i / n))
+    d = f"M{x0} {y0}" + "".join(f" A{r} {r} 0 0 1 {x:.1f} {y:.1f}" for x, y in pts)
+    return d
+
+
 def hero_cards():
-    clip = '<clipPath id="h-cc"><rect x="-55" y="-36" width="110" height="72" rx="9"/></clipPath>'
+    A, ink, paper = FIX_ACC, "#101014", "#fbfaf7"
+    defs = (
+        '<clipPath id="h-cc"><rect x="-60" y="-39" width="120" height="78" rx="10"/></clipPath>'
+        '<pattern id="h-hatch" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+        '<path d="M0 0 V3" stroke="#101014" stroke-opacity=".2" stroke-width=".6"/></pattern>'
+        '<linearGradient id="h-night" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a1230"/><stop offset="1" stop-color="#1c2b66"/></linearGradient>'
+        '<linearGradient id="h-dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d2540"/><stop offset=".6" stop-color="#6a5674"/><stop offset="1" stop-color="#eaa77a"/></linearGradient>'
+        '<linearGradient id="h-asph" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6e6871"/><stop offset="1" stop-color="#26262b"/></linearGradient>'
+        '<radialGradient id="h-sun"><stop offset="0" stop-color="#ffdcae" stop-opacity=".95"/><stop offset="1" stop-color="#ffdcae" stop-opacity="0"/></radialGradient>'
+        f'<linearGradient id="h-av" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8cc0ff"/><stop offset="1" stop-color="{A}"/></linearGradient>'
+    )
 
-    def card(bg, inner, border="rgba(16,16,20,.12)"):
-        return (
-            f'<rect x="-55" y="-36" width="110" height="72" rx="9" fill="{bg}"/>'
-            f'<g clip-path="url(#h-cc)">{inner}</g>'
-            f'<rect x="-55" y="-36" width="110" height="72" rx="9" fill="none" stroke="{border}"/>'
-        )
+    def card(bg, inner, dark=False):
+        border = "rgba(255,255,255,.10)" if dark else "rgba(16,16,20,.13)"
+        return (f'<rect x="-60" y="-39" width="120" height="78" rx="10" fill="{bg}"/>'
+                f'<g clip-path="url(#h-cc)">{inner}</g>'
+                f'<rect x="-59.5" y="-38.5" width="119" height="77" rx="9.5" fill="none" stroke="{border}"/>')
 
-    lines = [(0, 40, "#bb9af7"), (8, 56, "#7aa2f7"), (8, 34, "#9ece6a"), (16, 44, "#e0af68"), (8, 50, "#7dcfff"), (0, 22, "#bb9af7")]
-    c = {
-        "plan": card("#fbfaf7",
-            '<g fill="none" stroke="#101014" stroke-opacity=".6" stroke-width=".9">'
-            '<rect x="-42" y="-26" width="84" height="46"/><path d="M-10 -26 V2 H42 M-42 2 H-26 M14 2 V20"/></g>'
-            f'<path d="M-26 2 a12 12 0 0 1 12 -12" fill="none" stroke="{FIX_ACC}" stroke-width=".9"/>'
-            + mono(-42, 30, "PLAN · L2", 4.6, "rgba(16,16,20,.45)")),
-        "iso": card("#0f1733",
-            '<g transform="translate(0,2)"><polygon points="0,-24 28,-10 0,4 -28,-10" fill="#a5dcff"/>'
-            '<polygon points="-28,-10 0,4 0,28 -28,14" fill="#3b82f6" fill-opacity=".85"/>'
-            '<polygon points="28,-10 0,4 0,28 28,14" fill="#1d4ed8"/>'
-            '<path d="M-28 -10 L0 4 L28 -10 M0 4 V28 M-28 2 L0 16 L28 2" fill="none" stroke="#dbeeff" stroke-opacity=".55" stroke-width=".6"/></g>',
-            "rgba(255,255,255,.08)"),
-        "code": card("#16161e",
-            '<circle cx="-46" cy="-28" r="2" fill="#ff5f57"/><circle cx="-40" cy="-28" r="2" fill="#febc2e"/><circle cx="-34" cy="-28" r="2" fill="#28c840"/>'
-            + "".join(f'<rect x="{-46+i0}" y="{-18+i*8.5}" width="{w}" height="3.6" rx="1.8" fill="{col}" fill-opacity=".9"/>'
-                      for i, (i0, w, col) in enumerate(lines)),
-            "rgba(255,255,255,.08)"),
-        "chat": card("#15151c",
-            f'<rect x="-14" y="-27" width="60" height="18" rx="7" fill="{FIX_ACC}"/><rect x="-8" y="-20" width="40" height="3.4" rx="1.7" fill="#fff" fill-opacity=".9"/>'
-            '<rect x="-46" y="-3" width="72" height="30" rx="7" fill="#26262f"/>'
-            '<path d="M-40 6 l1.2 -3 l1.2 3 l3 1.2 l-3 1.2 l-1.2 3 l-1.2 -3 l-3 -1.2 z" fill="#9cc2ff"/>'
-            '<rect x="-31" y="3" width="48" height="3.4" rx="1.7" fill="#d4d4d8"/><rect x="-31" y="12" width="34" height="3.4" rx="1.7" fill="#71717a"/>',
-            "rgba(255,255,255,.08)"),
-        "rebar": card("#fbfaf7",
-            '<rect x="-18" y="-28" width="36" height="56" fill="#ebe9e3" stroke="#101014" stroke-opacity=".7" stroke-width=".9"/>'
-            f'<rect x="-13" y="-23" width="26" height="46" rx="3" fill="none" stroke="{FIX_ACC}" stroke-width=".9"/>'
-            + "".join(f'<circle cx="{x}" cy="-17" r="2.3" fill="#101014"/>' for x in (-7, 0, 7))
-            + "".join(f'<circle cx="{x}" cy="17" r="2.8" fill="#101014"/>' for x in (-7, 0, 7))
-            + '<path d="M28 -28 V28 M25 -28 H31 M25 28 H31" stroke="#101014" stroke-opacity=".5" stroke-width=".6"/>'
-            + mono(33, 2, "600", 4.6, "rgba(16,16,20,.45)")),
-        "table": card("#fbfaf7",
-            '<rect x="-46" y="-27" width="92" height="10" rx="2" fill="#e9e8e4"/>'
-            + mono(-42, -20, "ID   CAT    LVL", 4.4, "rgba(16,16,20,.6)")
-            + "".join(f'<path d="M-46 {y} H46" stroke="rgba(16,16,20,.12)"/>' for y in (-7, 3, 13, 23))
-            + "".join(
-                f'<rect x="-42" y="{y-7}" width="10" height="3" fill="#101014" fill-opacity=".5"/>'
-                f'<rect x="-24" y="{y-7}" width="22" height="3" fill="#101014" fill-opacity=".3"/>'
-                f'<rect x="8" y="{y-7}" width="12" height="3" fill="{FIX_ACC}" fill-opacity=".75"/>'
-                for y in (3, 13, 23, 33))),
-        "pot": card("#3a3a3e",
-            '<rect x="-55" y="-36" width="110" height="26" fill="#d99d77"/>'
-            '<rect x="-55" y="-36" width="110" height="14" fill="#5e5470"/>'
-            '<polygon points="-3,-10 3,-10 70,36 -70,36" fill="#323137"/>'
-            '<polygon points="-.6,-6 .6,-6 1.6,4 -1.6,4" fill="#f2f1ee" fill-opacity=".8"/>'
-            '<polygon points="-2,10 2,10 3.4,24 -3.4,24" fill="#f2f1ee" fill-opacity=".8"/>'
-            '<ellipse cx="-20" cy="18" rx="13" ry="4" fill="#17171a"/>'
-            f'<path d="M-36 9 v-4 h4 M-4 9 v-4 h-4 M-36 25 v4 h4 M-4 25 v4 h-4" fill="none" stroke="{FIX_ACC}" stroke-width="1.1"/>'
-            f'<rect x="-36" y="-2" width="36" height="7" fill="{FIX_ACC}"/>'
-            + mono(-34, 3.4, "POTHOLE .94", 3.8, "#fff"),
-            "rgba(255,255,255,.08)"),
-        "sheet": card("#ffffff",
-            '<rect x="-48" y="-30" width="96" height="60" fill="none" stroke="#101014" stroke-opacity=".35" stroke-width=".6"/>'
-            '<path d="M-40 -22 H4 V8 H-40 Z M-18 -22 V-4 H4" fill="none" stroke="#101014" stroke-opacity=".5" stroke-width=".7"/>'
-            '<rect x="14" y="12" width="30" height="14" fill="none" stroke="#101014" stroke-opacity=".35" stroke-width=".6"/>'
-            '<path d="M14 19 H44 M29 19 V26" stroke="#101014" stroke-opacity=".3" stroke-width=".5"/>'
-            f'<path d="M30 -24 l6 10 h-12 z" fill="none" stroke="{FIX_ACC}" stroke-width=".8"/>'),
-    }
-    return clip + "".join(f'<g id="h-{k}">{v}</g>' for k, v in c.items())
+    def sparkle(cx, cy, s, fill):
+        return (f'<path transform="translate({cx},{cy}) scale({s})" fill="{fill}" '
+                'd="M0 -4 L1 -1 L4 0 L1 1 L0 4 L-1 1 L-4 0 L-1 -1 Z"/>')
+
+    c = {}
+
+    # ---- floor plan with grid, poché walls, doors, a selected room
+    p = []
+    for gx, lab in [(-48, "A"), (-6, "B"), (48, "C")]:
+        p.append(f'<path d="M{gx} -27 V31" stroke="{ink}" stroke-opacity=".14" stroke-width=".5" stroke-dasharray="1.6 1.6"/>')
+        p.append(f'<circle cx="{gx}" cy="-31" r="3.4" fill="{paper}" stroke="{ink}" stroke-opacity=".45" stroke-width=".5"/>')
+        p.append(mono(gx, -29.7, lab, 3.6, "rgba(16,16,20,.6)", "middle", cls="fc"))
+    p.append(f'<rect x="-5" y="-21" width="52" height="24" fill="{A}" fill-opacity=".13"/>')
+    p.append(f'<rect x="-42" y="16" width="24" height="7" rx="2" fill="none" stroke="{ink}" stroke-opacity=".35" stroke-width=".5"/>')
+    p.append(f'<circle cx="-27" cy="-3" r="5" fill="none" stroke="{ink}" stroke-opacity=".3" stroke-width=".5"/>')
+    p.append(f'<rect x="10" y="-17" width="18" height="12" rx="1.5" fill="none" stroke="{ink}" stroke-opacity=".35" stroke-width=".5"/>'
+             f'<path d="M10 -13.5 H28" stroke="{ink}" stroke-opacity=".3" stroke-width=".4"/>')
+    p.append(f'<rect x="-48" y="-22" width="96" height="50" fill="none" stroke="{ink}" stroke-width="2.2"/>')
+    p.append(f'<path d="M-6 -22 V-4 M-6 7 V28 M-6 4 H20 M30 4 H48" fill="none" stroke="{ink}" stroke-width="1.4"/>')
+    for wx in (-38, 14, 32):
+        p.append(f'<rect x="{wx}" y="-23.4" width="10" height="2.8" fill="{paper}"/>'
+                 f'<path d="M{wx} -22.6 H{wx+10} M{wx} -21.4 H{wx+10}" stroke="{ink}" stroke-opacity=".7" stroke-width=".4"/>')
+    p.append(f'<path d="M-6 -4 H5 A11 11 0 0 1 -6 7 M20 4 V14 A10 10 0 0 0 30 4" fill="none" stroke="{ink}" stroke-opacity=".45" stroke-width=".5"/>')
+    p.append(mono(44, -16, "BED 2", 3.4, A, "end"))
+    p.append(f'<path d="M-48 34 H48 M-48 32 V36 M48 32 V36" stroke="{ink}" stroke-opacity=".45" stroke-width=".5"/>'
+             f'<rect x="-9" y="31.6" width="18" height="4.8" fill="{paper}"/>' + mono(0, 35.4, "9 600", 3.6, "rgba(16,16,20,.6)", "middle", cls="fc"))
+    c["plan"] = card(paper, "".join(p))
+
+    # ---- isometric tower at night
+    p = [f'<rect x="-60" y="-39" width="120" height="78" fill="url(#h-night)"/>']
+    for x, y in [(-50, -30), (-36, -20), (40, -32), (52, -18), (24, -26), (-20, -34)]:
+        p.append(f'<circle cx="{x}" cy="{y}" r=".6" fill="#fff" fill-opacity=".7"/>')
+    for k in range(-6, 7):
+        p.append(f'<path d="M{-70 + k*12} 40 l60 -34" stroke="#7fa6ff" stroke-opacity=".10" stroke-width=".5"/>'
+                 f'<path d="M{70 + k*12} 40 l-60 -34" stroke="#7fa6ff" stroke-opacity=".10" stroke-width=".5"/>')
+    p.append('<ellipse cx="-2" cy="31" rx="40" ry="7" fill="#000" fill-opacity=".3"/>')
+    tower, F, Rr, L = _iso_box(-4, 32, 24, 20, 44, "#a9dcff", "#3b82f6", "#1e4fd0")
+    p.append(tower)
+    lit = {(1, 2), (2, 4), (3, 1), (4, 3), (5, 2), (1, 5), (6, 4)}
+    for row in range(1, 7):
+        z = row * 6 + 2
+        for col in range(4):
+            t0 = 0.1 + col * 0.21
+            for face, corner, n in (("l", L, 0), ("r", Rr, 1)):
+                fill = "#ffd28a" if (row, col + 3 * n) in lit else "#bfe0ff"
+                op = ".95" if fill == "#ffd28a" else ".35"
+                q = []
+                for (t, dz) in ((t0, 0), (t0 + .13, 0), (t0 + .13, 3), (t0, 3)):
+                    x = F[0] + (corner[0] - F[0]) * t
+                    y = F[1] + (corner[1] - F[1]) * t - z - dz
+                    q.append(f"{x:.1f},{y:.1f}")
+                p.append(f'<polygon points="{" ".join(q)}" fill="{fill}" fill-opacity="{op}"/>')
+    wing, *_ = _iso_box(20, 35, 20, 14, 12, "#c7e6ff", "#5b9bff", "#2a5fe0")
+    p.append(wing)
+    c["iso"] = card("#0a1230", "".join(p), dark=True)
+
+    # ---- code editor
+    p = ['<rect x="-60" y="-39" width="120" height="12" fill="#1d1e27"/>']
+    for x, col in [(-51, "#ff5f57"), (-45.5, "#febc2e"), (-40, "#28c840")]:
+        p.append(f'<circle cx="{x}" cy="-33" r="1.8" fill="{col}"/>')
+    p.append('<rect x="-33" y="-37" width="34" height="10" rx="2" fill="#15161d"/>')
+    p.append('<text class="fb" x="-29" y="-30.4" font-size="4" fill="#c0c3d0">Command.cs</text>')
+    lines = [
+        (0, [(10, "#bb9af7"), (18, "#e0e0e6"), (14, "#7dcfff")]),
+        (0, [(12, "#bb9af7"), (22, "#7aa2f7")]),
+        (6, [(8, "#bb9af7"), (16, "#e0e0e6"), (20, "#9ece6a")]),
+        (6, [(14, "#7aa2f7"), (10, "#e0af68"), (8, "#e0e0e6")]),
+        (12, [(18, "#7aa2f7"), (12, "#ff9e64")]),
+        (6, [(10, "#bb9af7"), (16, "#7dcfff")]),
+        (0, [(4, "#e0e0e6")]),
+    ]
+    for i, (ind, segs) in enumerate(lines):
+        y = -19 + i * 7.6
+        if i == 3:
+            p.append(f'<rect x="-60" y="{y-4.2}" width="120" height="6.6" fill="#fff" fill-opacity=".05"/>')
+        p.append(mono(-48, y + 1.1, str(i + 1), 3.4, "#454756", "end", cls="fc"))
+        x = -43 + ind
+        for w, col in segs:
+            p.append(f'<rect x="{x}" y="{y-1.3}" width="{w}" height="2.6" rx="1.3" fill="{col}" fill-opacity=".92"/>')
+            x += w + 2
+        if i == 3:
+            p.append(f'<rect x="{x}" y="{y-2.6}" width=".9" height="5.2" fill="{A}"/>')
+    for i in range(10):
+        p.append(f'<rect x="49" y="{-24 + i*5.6}" width="{[6,8,5,7,4,8,6,3,7,5][i]}" height="1.6" fill="#fff" fill-opacity=".14"/>')
+    c["code"] = card("#15161d", "".join(p), dark=True)
+
+    # ---- agent chat
+    p = [f'<circle cx="-48" cy="-28" r="5" fill="url(#h-av)"/>' + sparkle(-48, -28, .7, "#fff")]
+    p.append('<text class="fb" x="-40" y="-26.4" font-size="4.6" fill="#e4e4e7">Revit agent</text>')
+    p.append('<circle cx="-13" cy="-28" r="1.4" fill="#34d399"/>')
+    p.append('<path d="M-60 -19.5 H60" stroke="#fff" stroke-opacity=".07"/>')
+    p.append(f'<rect x="2" y="-15" width="52" height="14" rx="6" fill="{A}"/>'
+             '<rect x="8" y="-10.8" width="34" height="2.4" rx="1.2" fill="#fff" fill-opacity=".92"/>'
+             '<rect x="8" y="-6.2" width="22" height="2.4" rx="1.2" fill="#fff" fill-opacity=".7"/>')
+    p.append('<rect x="-54" y="3" width="66" height="22" rx="6" fill="#23232d"/>' + sparkle(-48.5, 8.5, .55, "#9cc2ff"))
+    p.append('<rect x="-43" y="7.3" width="44" height="2.4" rx="1.2" fill="#d4d4d8"/>'
+             '<rect x="-43" y="12" width="34" height="2.4" rx="1.2" fill="#8b8b96"/>')
+    p.append(f'<rect x="-43" y="16.6" width="24" height="6" rx="3" fill="none" stroke="{A}" stroke-width=".7"/>'
+             + mono(-31, 20.8, "37 WALLS", 3, "#9cc2ff", "middle"))
+    p.append('<rect x="-54" y="28.5" width="96" height="7" rx="3.5" fill="#1b1b23" stroke="#2e2e38" stroke-width=".5"/>'
+             '<rect x="-49" y="31.3" width="28" height="1.6" rx=".8" fill="#4a4a56"/>')
+    p.append(f'<circle cx="49" cy="32" r="4.2" fill="{A}"/><path d="M47 32 h4 m-1.6 -1.6 l1.6 1.6 l-1.6 1.6" fill="none" stroke="#fff" stroke-width=".7"/>')
+    c["chat"] = card("#121219", "".join(p), dark=True)
+
+    # ---- beam section with rebar
+    p = ['<rect x="-30" y="-30" width="40" height="62" fill="#ebe9e3"/><rect x="-30" y="-30" width="40" height="62" fill="url(#h-hatch)"/>']
+    p.append(f'<rect x="-30" y="-30" width="40" height="62" fill="none" stroke="{ink}" stroke-opacity=".8" stroke-width="1"/>')
+    p.append(f'<rect x="-25.5" y="-25.5" width="31" height="53" rx="3" fill="none" stroke="{A}" stroke-width="1.1"/>'
+             f'<path d="M-21.5 -25.5 l4 4 M-25.5 -21.5 l4 4" stroke="{A}" stroke-width=".9"/>')
+    for x in (-19, -10, -1):
+        p.append(f'<circle cx="{x}" cy="-19.5" r="2.8" fill="{ink}"/><circle cx="{x-.8}" cy="-20.3" r=".8" fill="#fff" fill-opacity=".45"/>')
+    for x in (-20.5, -13.2, -5.9, 1.4):
+        p.append(f'<circle cx="{x}" cy="22.5" r="3.1" fill="{ink}"/><circle cx="{x-.9}" cy="21.6" r=".9" fill="#fff" fill-opacity=".45"/>')
+    p.append(f'<path d="M16 -30 V32 M13.5 -30 H18.5 M13.5 32 H18.5" stroke="{ink}" stroke-opacity=".45" stroke-width=".5"/>'
+             f'<rect x="13.6" y="-1" width="4.8" height="9" fill="{paper}"/>' + mono(16, 1.4, "600", 3.4, "rgba(16,16,20,.6)", "middle", cls="fc",
+                                                                                      extra='transform="rotate(90 16 1.4)"'))
+    p.append(f'<path d="M-1 -19.5 L26 -27 H54 M1.4 22.5 L26 30 H54 M5.5 2 H54" fill="none" stroke="{ink}" stroke-opacity=".5" stroke-width=".5"/>')
+    p.append(mono(27, -28.6, "3Ø20", 4, ink, cls="fc") + mono(27, 28.4, "4Ø25", 4, ink, cls="fc") + mono(27, .6, "Ø10@150", 3.6, A, cls="fc"))
+    c["rebar"] = card(paper, "".join(p))
+
+    # ---- wall schedule with fire ratings
+    p = [f'<text class="fb" x="-52" y="-26.6" font-size="4.8" fill="{ink}">Wall schedule</text>']
+    p.append(f'<rect x="26" y="-31.4" width="26" height="7" rx="3.5" fill="{A}" fill-opacity=".14"/>' + mono(39, -26.8, "1 240", 3.4, A, "middle", cls="fc"))
+    p.append('<rect x="-54" y="-21" width="108" height="8" rx="2" fill="#ecebe6"/>')
+    for x, lab in [(-50, "MARK"), (-28, "TYPE"), (6, "LEVEL"), (30, "FIRE")]:
+        p.append(mono(x, -15.8, lab, 3.1, "rgba(16,16,20,.55)"))
+    status = ["2H", "2H", None, "1H", None]
+    widths = [24, 30, 20, 28, 22]
+    for i in range(5):
+        y = -7.5 + i * 8.4
+        p.append(mono(-50, y + 1.3, f"W-0{i+1}", 3.5, "rgba(16,16,20,.75)", cls="fc"))
+        p.append(f'<rect x="-28" y="{y-1.2}" width="{widths[i]}" height="2.4" rx="1.2" fill="{ink}" fill-opacity=".2"/>')
+        p.append(mono(6, y + 1.3, "L2", 3.5, "rgba(16,16,20,.75)", cls="fc"))
+        if status[i]:
+            p.append(f'<rect x="30" y="{y-2.6}" width="14" height="5.2" rx="2.6" fill="#16a34a" fill-opacity=".14"/>'
+                     + mono(37, y + 1.1, status[i], 3.2, "#15803d", "middle", cls="fc"))
+        else:
+            p.append(f'<rect x="30" y="{y-2.6}" width="18" height="5.2" rx="2.6" fill="#f59e0b" fill-opacity=".18"/>'
+                     + mono(39, y + 1.1, "NONE", 3, "#b45309", "middle"))
+        p.append(f'<path d="M-54 {y+4.2} H54" stroke="{ink}" stroke-opacity=".08" stroke-width=".5"/>')
+    c["table"] = card(paper, "".join(p))
+
+    # ---- dashcam frame with a detected pothole
+    p = ['<rect x="-60" y="-39" width="120" height="29" fill="url(#h-dusk)"/>',
+         '<circle cx="4" cy="-11" r="17" fill="url(#h-sun)"/><circle cx="4" cy="-12" r="3.2" fill="#ffe8c8"/>']
+    for x, w, h in [(-60, 10, 10), (-50, 8, 15), (-42, 12, 8), (-30, 7, 13), (-23, 10, 6), (14, 9, 9), (23, 7, 16), (30, 12, 11), (42, 8, 7), (50, 12, 13)]:
+        p.append(f'<rect x="{x}" y="{-10-h}" width="{w}" height="{h}" fill="#262a3b"/>')
+    p.append('<rect x="-60" y="-10" width="120" height="49" fill="#3a3440"/>')
+    p.append('<polygon points="2,-10 6,-10 72,39 -64,39" fill="url(#h-asph)"/>')
+    p.append('<path d="M2.5 -10 L-60 39 M5.5 -10 L68 39" stroke="#efe7dc" stroke-opacity=".55" stroke-width=".6"/>')
+    for q in ["3.6,-6 4.4,-6 4.9,-2 3.1,-2", "2.9,2 5.1,2 5.8,9 2.2,9", "1.6,15 6.4,15 7.6,27 .4,27"]:
+        p.append(f'<polygon points="{q}" fill="#f2ece2" fill-opacity=".85"/>')
+    p.append('<ellipse cx="-16" cy="20" rx="13" ry="4" fill="#141417"/><ellipse cx="-17" cy="19.4" rx="8" ry="2" fill="#3a3f55" fill-opacity=".7"/>')
+    p.append(f'<rect x="-32" y="13" width="32" height="13" fill="{A}" fill-opacity=".1"/>'
+             f'<path d="M-32 17 v-4 h4 M-4 13 h4 v4 M-32 22 v4 h4 M-4 26 h4 v-4" fill="none" stroke="{A}" stroke-width="1.1"/>'
+             f'<rect x="-32" y="6.6" width="33" height="6" fill="{A}"/>' + mono(-30.6, 10.9, "POTHOLE .94", 3.3, "#fff"))
+    p.append('<path d="M-54 -27 v-6 h6 M48 -33 h6 v6 M-54 27 v6 h6 M48 33 h6 v-6" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width=".7"/>')
+    p.append('<circle cx="-47" cy="-28.6" r="1.5" fill="#ff5a5a"/>' + mono(-44, -27.4, "REC", 3.3, "rgba(255,255,255,.85)"))
+    c["pot"] = card("#3a3440", "".join(p), dark=True)
+
+    # ---- drawing sheet with title block and revision cloud
+    p = [f'<rect x="-55" y="-34" width="110" height="68" fill="none" stroke="{ink}" stroke-opacity=".45" stroke-width=".6"/>',
+         f'<rect x="-52" y="-31" width="104" height="62" fill="none" stroke="{ink}" stroke-opacity=".22" stroke-width=".4"/>']
+    p.append(f'<rect x="-46" y="-24" width="58" height="40" fill="none" stroke="{ink}" stroke-opacity=".8" stroke-width="1.6"/>')
+    p.append(f'<path d="M-20 -24 V-6 M-20 3 V16 M-20 -2 H12 M-46 4 H-34" fill="none" stroke="{ink}" stroke-opacity=".75" stroke-width=".9"/>')
+    p.append(f'<path d="M-20 -6 H-12 A8 8 0 0 1 -20 3" fill="none" stroke="{ink}" stroke-opacity=".4" stroke-width=".4"/>')
+    p.append(f'<path d="{_cloud(-6, -21, 9, -5)}" fill="none" stroke="{A}" stroke-width=".7"/>')
+    p.append(f'<path d="M15 -26 l4 7 h-8 z" fill="#fff" stroke="{A}" stroke-width=".7"/>' + mono(15, -20.4, "1", 3.4, A, "middle", cls="fc"))
+    p.append(f'<circle cx="35" cy="-17" r="5" fill="none" stroke="{ink}" stroke-opacity=".4" stroke-width=".5"/>'
+             f'<path d="M35 -21.5 l2 7 l-2 -1.6 l-2 1.6 z" fill="{ink}" fill-opacity=".7"/>' + mono(35, -23.4, "N", 2.8, "rgba(16,16,20,.6)", "middle", cls="fc"))
+    p.append(f'<rect x="18" y="8" width="34" height="23" fill="none" stroke="{ink}" stroke-opacity=".45" stroke-width=".5"/>'
+             f'<path d="M18 16 H52 M18 23 H52 M35 23 V31" stroke="{ink}" stroke-opacity=".3" stroke-width=".4"/>')
+    p.append(mono(20, 13.6, "PROJECT", 2.8, "rgba(16,16,20,.5)") +
+             f'<text class="fh" x="20" y="21.4" font-size="4.4" fill="{ink}">A-201</text>' +
+             mono(20, 28.6, "1:100", 3, "rgba(16,16,20,.6)", cls="fc") + mono(37, 28.6, "REV 1", 3, A, cls="fc"))
+    c["sheet"] = card("#ffffff", "".join(p))
+
+    return defs + "".join(f'<g id="h-{k}">{v}</g>' for k, v in c.items())
 
 
 def ticker():
@@ -180,7 +354,7 @@ def ticker():
 def hero():
     W, H = 880, 600
     css = """
-.h-o1{offset-path:path('M440,0 A380,300 0 1,1 440,600 A380,300 0 1,1 440,0');offset-rotate:0deg;animation:h-orb 84s linear infinite}
+.h-o1{offset-path:path('M440,0 A400,300 0 1,1 440,600 A400,300 0 1,1 440,0');offset-rotate:0deg;animation:h-orb 84s linear infinite}
 .h-o2{offset-path:path('M440,-72 A470,372 0 1,1 440,672 A470,372 0 1,1 440,-72');offset-rotate:0deg;animation:h-orb 126s linear infinite reverse}
 @keyframes h-orb{from{offset-distance:0%}to{offset-distance:100%}}
 .h-dash{animation:h-dash 22s linear infinite}
@@ -198,23 +372,24 @@ def hero():
     b = [f'<rect width="{W}" height="{H}" fill="{bg}"/>']
     b.append(
         "<defs>"
-        f'<filter id="h-sh" x="-40%" y="-40%" width="180%" height="190%"><feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#000" flood-opacity="{T["shadow"]}"/></filter>'
-        f'<linearGradient id="h-fl" x1="0" x2="1"><stop offset="0" stop-color="{bg}"/><stop offset="1" stop-color="{bg}" stop-opacity="0"/></linearGradient>'
+        f'<filter id="h-sh" x="-40%" y="-40%" width="180%" height="200%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity="{T["shadow"]}"/></filter>'
+        f'<filter id="h-sh2" x="-40%" y="-40%" width="180%" height="200%"><feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#000" flood-opacity="{float(T["shadow"]) * .7:.2f}"/></filter>'
+        ''
         f'<linearGradient id="h-fr" x1="0" x2="1"><stop offset="0" stop-color="{bg}" stop-opacity="0"/><stop offset="1" stop-color="{bg}" stop-opacity=".92"/></linearGradient>'
         '<clipPath id="h-wm"><rect x="0" y="104" width="880" height="106"/></clipPath>'
         + hero_cards() + "</defs>"
     )
-    for rx, ry in [(250, 197), (380, 300), (470, 372), (600, 474), (740, 585)]:
+    for rx, ry in [(250, 197), (400, 300), (470, 372), (600, 474), (740, 585)]:
         b.append(f'<ellipse cx="440" cy="300" rx="{rx}" ry="{ry}" fill="none" stroke="{ink}" stroke-opacity=".08"/>')
-    b.append(f'<ellipse class="h-dash" cx="440" cy="300" rx="380" ry="300" fill="none" stroke="{T["acc"]}" stroke-opacity=".35" stroke-dasharray="2 14"/>')
+    b.append(f'<ellipse class="h-dash" cx="440" cy="300" rx="400" ry="300" fill="none" stroke="{T["acc"]}" stroke-opacity=".35" stroke-dasharray="2 14"/>')
 
     b.append('<g class="h-cards">')
-    for i, k in enumerate(["sheet", "iso", "code", "plan", "chat", "rebar"]):
-        b.append(f'<g class="h-o2" style="offset-distance:{(1 - i / 6) * 100:.2f}%;animation-delay:-{i*21}s"><use href="#h-{k}" transform="scale(.76)" opacity=".72"/></g>')
+    for i, k in enumerate(["sheet", "pot", "table", "plan", "chat", "rebar"]):
+        b.append(f'<g class="h-o2" style="offset-distance:{(1 - i / 6) * 100:.2f}%;animation-delay:-{i*21}s"><use href="#h-{k}" transform="scale(.78)" filter="url(#h-sh2)"/></g>')
     for i, k in enumerate(["plan", "code", "rebar", "chat", "iso", "table", "pot"]):
         b.append(f'<g class="h-o1" style="offset-distance:{i*100/7:.2f}%;animation-delay:-{i*12}s"><use href="#h-{k}" filter="url(#h-sh)"/></g>')
     b.append("</g>")
-    b.append('<rect x="0" y="0" width="70" height="600" fill="url(#h-fl)"/><rect x="790" y="0" width="90" height="600" fill="url(#h-fr)"/>')
+    b.append(f'<rect x="812" y="0" width="34" height="600" fill="url(#h-fr)"/><rect x="846" y="0" width="34" height="600" fill="{bg}" fill-opacity=".92"/>')
 
     b.append(
         '<g clip-path="url(#h-wm)"><g class="h-rise">'
@@ -253,14 +428,14 @@ def hero():
     b.append("".join(r))
     b.append(f'<g class="h-mk"><path d="M838 88 H880" stroke="{T["acc"]}"/>' + mono(866, 84, "012 %", 6.5, T["acc"], "end", "fc") + "</g>")
 
-    n = [f'<rect width="{W}" height="44" fill="{bg}"/><path d="M0 44.5 H880" stroke="{line}"/>', mark(15, 12)]
+    n = [f'<rect width="{W}" height="44" fill="{bg}"/><path d="M0 44.5 H880" stroke="{line}"/>', mark(26 - 104 * 22 / 132 / 2, 11, 22)]
     n.append(f'<path d="M52.5 0 V44" stroke="{line}"/>')
     n.append(f'<rect x="62" y="13" width="44" height="18" fill="{ink}"/>' + mono(68, 25.5, "HOME", 9.5, bg))
     for x, s in [(124, "WORK"), (176, "JOURNEY"), (250, "WRITING"), (324, "ACTIVITY"), (405, "CONTACT")]:
         n.append(mono(x, 25.5, s, 9.5, T["muted"]))
     n.append(f'<path d="M548.5 0 V44 M710.5 0 V44 M756.5 0 V44" stroke="{line}"/>')
     n.append(mono(566, 25.5, "GITHUB", 9.5, T["muted"]) + mono(633, 25.5, "LINKEDIN", 9.5, T["muted"]))
-    n.append(f'<path d="M731 16 a7 7 0 1 0 6 10 a5.5 5.5 0 1 1 -6 -10 z" fill="none" stroke="{ink}" stroke-width="1.1"/>')
+    n.append(moon(733.5, 22, 15, ink))
     n.append(f'<rect x="756" y="0" width="124" height="44" fill="{ink}"/>' + mono(818, 25.5, "VISIT BLOG", 9.5, bg, "middle"))
     b.append("".join(n))
 
@@ -746,7 +921,7 @@ def closing_scene():
     b.append(f'<rect x="444.5" y="214.5" width="119" height="39" fill="none" stroke="{ink}" stroke-opacity=".28"/>' + mono(504, 237.5, "LINKEDIN", 10, ink, "middle"))
 
     # footer
-    f = [f'<path d="M0 .5 H880 M0 232.5 H880" stroke="{line}"/>', mark(32, 34, 1.3)]
+    f = [f'<path d="M0 .5 H880 M0 232.5 H880" stroke="{line}"/>', mark(32, 28, 32)]
     f.append(f'<text class="fb" x="32" y="96" font-size="14" fill="{T["muted"]}">Software for buildings,</text>')
     f.append(f'<text class="fb" x="32" y="116" font-size="14" fill="{T["muted"]}">from a civil engineer.</text>')
     f.append(mono(32, 148, "LDATUAN.COM", 7.5))

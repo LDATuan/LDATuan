@@ -104,17 +104,6 @@ def readme():
 <p>
 {body}
 </p>
-
-<details>
-<summary>How this page is made</summary>
-
-<br>
-
-Every image here is an SVG drawn by [`scripts/render.py`](scripts/render.py). There is no JavaScript and no image service: motion is CSS keyframes, and the fonts (Archivo, Instrument Serif, Geist Mono and Inter, all under the SIL Open Font License) are subset to the characters each image uses and embedded. Each image has a light and a dark version, picked by your GitHub theme, and everything rests on its final frame when reduced motion is on.
-
-The activity city is redrawn every night by a [GitHub Action](.github/workflows/refresh-profile.yml) that reads the public contribution calendar and commits the result.
-
-</details>
 """
 
 
